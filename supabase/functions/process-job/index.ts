@@ -1,57 +1,166 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// Import Google GenAI modules
+import {
+  GoogleGenAI,
+  createUserContent,
+  createPartFromUri,
+  type FileData, // Import FileData type for upload
+} from "https://esm.sh/@google/genai";
 import { corsHeaders } from '../_shared/cors.ts'; // Although likely not called via HTTP, good practice
+import * as path from "https://deno.land/std@0.177.0/path/mod.ts"; // For extracting filename
 
 // IMPORTANT: Set these environment variables in your Supabase project settings
 // - SUPABASE_URL
 // - SUPABASE_SERVICE_ROLE_KEY
 // - GOOGLE_GEMINI_API_KEY
-// - GEMINI_API_ENDPOINT (e.g., https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent)
+// - GOOGLE_GEMINI_API_KEY
+// - GEMINI_TRANSCRIPTION_MODEL (e.g., gemini-1.5-flash-latest) - Model used for transcription
 
 console.log('Process Job function booting up');
 
-// Placeholder function for Gemini API call
-// Replace with actual implementation based on Google's API documentation
-async function transcribeAudioWithGemini(audioBlob: Blob, apiKey: string, endpoint: string): Promise<any> {
-  console.log(`Calling Gemini API at ${endpoint} for audio size: ${audioBlob.size}`);
+// Define the desired output schema for transcription
+const TRANSCRIPTION_OUTPUT_SCHEMA = {
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "description": "Start time of the segment in mm:ss format"
+          },
+          "ad": {
+            "type": "boolean",
+            "description": "Indicates if the segment is an advertisement"
+          },
+          "speaker": {
+            "type": "string",
+            "description": "Identified speaker (e.g., Speaker 1, Speaker 2)"
+          },
+          "text": {
+            "type": "string",
+            "description": "Transcribed text for the segment"
+          },
+          "tone": {
+            "type": "string",
+            "description": "Overall tone of the segment (e.g., informative, conversational, urgent)"
+          }
+        },
+        "required": [
+          "timestamp",
+          "ad",
+          "speaker",
+          "text",
+          "tone"
+        ]
+      }
+    }
+  },
+  "required": [
+    "items"
+  ]
+};
 
-  // TODO: Replace with actual Gemini API request structure
-  // This might involve multipart/form-data or base64 encoding the audio
-  // Example using fetch (adjust headers, body, method as needed):
-  /*
-  const response = await fetch(`${endpoint}?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, // Or appropriate content type
-    body: JSON.stringify({
-      // Gemini-specific request payload structure here
-      // Might involve sending the audio data directly or a reference
-      contents: [{ parts: [{ inline_data: { mime_type: audioBlob.type, data: await blobToBase64(audioBlob) } }] }]
-    }),
-  });
+// Actual implementation using Google File API and Gemini
+async function transcribeAudioWithGemini(
+    audioBlob: Blob,
+    originalFilePath: string, // Pass the original file path to extract filename
+    apiKey: string
+    // modelName parameter removed, will be hardcoded
+): Promise<any> {
+    const modelName = "gemini-2.5-pro-preview-03-25"; // Hardcoded model name from src/transcribe.ts
+    console.log(`Transcribing audio file: ${originalFilePath}, size: ${audioBlob.size} using model: ${modelName}`);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Gemini API Error Response:', errorText);
-    throw new Error(`Gemini API request failed with status ${response.status}: ${errorText}`);
-  }
+    if (!apiKey) {
+        throw new Error("GOOGLE_GEMINI_API_KEY environment variable not set");
+    }
+    // Removed check for modelName env var
 
-  const result = await response.json();
-  console.log('Gemini API Success Response:', result);
-  // TODO: Extract the actual transcription from the result object
-  return result; // Return the full result for now
-  */
+    const ai = new GoogleGenAI({ apiKey });
+    const originalFilename = path.basename(originalFilePath); // Extract filename from URL path or Content-Disposition
 
-  // --- Placeholder ---
-  await new Promise(resolve => setTimeout(resolve, 3000)); // Simulate network delay
-  if (Math.random() < 0.1) { // Simulate occasional failure
-      throw new Error("Simulated Gemini API Error");
-  }
-  return {
-      transcription: "This is a simulated transcription result.",
-      confidence: 0.95,
-      words: [ { word: "this", start: 0.1, end: 0.3 }, /* ... */ ]
-  };
-  // --- End Placeholder ---
+    // Sanitize filename for Google File API requirements:
+    // - Lowercase
+    // - Alphanumeric and dashes only
+    // - No leading/trailing dashes
+    let sanitizedFilename = originalFilename
+        .toLowerCase()
+        // Replace unsupported characters (anything not alphanumeric or dash) with a dash
+        .replace(/[^a-z0-9-]+/g, '-')
+        // Remove leading dashes
+        .replace(/^-+/, '')
+        // Remove trailing dashes
+        .replace(/-+$/, '');
+
+    // Handle cases where sanitization results in an empty string or just dashes
+    if (!sanitizedFilename || sanitizedFilename === '-') {
+        sanitizedFilename = `audio-file-${Date.now()}`; // Use a generic name + timestamp
+    }
+
+    // Ensure filename doesn't exceed potential length limits (optional, but good practice)
+    // const maxLength = 100; // Example max length
+    // sanitizedFilename = sanitizedFilename.substring(0, maxLength);
+
+
+    // 1. Upload file to Google File API
+    console.log(`Uploading sanitized filename: ${sanitizedFilename} (original: ${originalFilename}, type: ${audioBlob.type || 'audio/mpeg'}) to Google File API...`);
+
+    // Pass the blob directly in the 'file' property, and use 'config' for metadata
+    const uploadResult = await ai.files.upload({
+        file: audioBlob, // Pass the Blob directly
+        config: {
+            name: sanitizedFilename, // Use the sanitized name for the resource ID
+            displayName: originalFilename, // Keep original name for display (optional)
+            mimeType: audioBlob.type || 'audio/mpeg' // Ensure MIME type is provided
+        }
+    });
+    console.log("Google File API Upload Result:", uploadResult);
+
+    if (!uploadResult.uri || !uploadResult.mimeType) {
+        throw new Error("Uploaded file does not have a valid URI or MIME type from Google File API");
+    }
+
+    // 2. Call Gemini model with file reference and schema prompt
+    console.log(`Calling Gemini model ${modelName} with file URI: ${uploadResult.uri}`);
+    const result = await ai.models.generateContent({
+        model: modelName,
+        contents: createUserContent([
+            createPartFromUri(uploadResult.uri, uploadResult.mimeType),
+            "Transcribe the audio into the following JSON format, identifying speakers and segment details: " + JSON.stringify(TRANSCRIPTION_OUTPUT_SCHEMA),
+        ]),
+        // Optional: Add generationConfig if needed (temperature, etc.)
+    });
+
+    // 3. Extract and parse the result
+    const responseText = result.text?.trim();
+    if (!responseText) {
+        console.error("Gemini API returned no text response:", result);
+        throw new Error("Gemini API returned an empty response.");
+    }
+
+    console.log("Raw Gemini Response Text:", responseText);
+
+    try {
+        // Gemini might return the JSON within markdown ```json ... ``` tags
+        const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
+        const jsonToParse = jsonMatch ? jsonMatch[1] : responseText;
+        const parsedResult = JSON.parse(jsonToParse);
+        console.log("Parsed Transcription Result:", parsedResult);
+        return parsedResult;
+    } catch (parseError) {
+        // Check if parseError is an Error object before accessing message
+        const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+        console.error("Failed to parse Gemini JSON response:", errorMessage);
+        console.error("Raw response was:", responseText);
+        throw new Error(`Failed to parse transcription JSON: ${errorMessage}`);
+    }
+
+    // Note: Consider deleting the uploaded file from Google File API after processing
+    // await ai.files.delete({ name: uploadResult.name });
+    // console.log(`Deleted file ${uploadResult.name} from Google File API.`);
 }
 
 // Helper to convert Blob to Base64 (if needed by Gemini API)
@@ -66,9 +175,9 @@ async function transcribeAudioWithGemini(audioBlob: Blob, apiKey: string, endpoi
 // }
 
 
-async function processJob(supabaseAdmin: any, job: any, apiKey: string, endpoint: string) {
-    console.log(`Processing job ID: ${job.id}, file: ${job.file_path}`);
-    const bucketName = 'audio-files'; // Ensure this matches the upload bucket
+async function processJob(supabaseAdmin: any, job: any, apiKey: string) { // Removed modelName param
+    console.log(`Processing job ID: ${job.id}, url: ${job.audio_url}`);
+    // Bucket name no longer needed here
 
     try {
         // 1. Update job status to 'processing' and set started_at
@@ -84,20 +193,40 @@ async function processJob(supabaseAdmin: any, job: any, apiKey: string, endpoint
             return;
         }
 
-        // 2. Download audio file from Storage
-        console.log(`Downloading file: ${job.file_path} from bucket: ${bucketName}`);
-        const { data: blob, error: downloadError } = await supabaseAdmin.storage
-            .from(bucketName)
-            .download(job.file_path);
-
-        if (downloadError || !blob) {
-            console.error(`Failed to download file ${job.file_path} for job ${job.id}:`, downloadError);
-            throw new Error(`Failed to download audio file: ${downloadError?.message ?? 'Unknown error'}`);
+        // 2. Download audio file from URL
+        if (!job.audio_url) {
+            throw new Error(`Job ${job.id} is missing the audio_url.`);
         }
-        console.log(`File downloaded successfully, size: ${blob.size}`);
+        console.log(`Downloading audio from URL: ${job.audio_url}`);
+        let blob: Blob;
+        let fetchedFileName: string; // Store filename derived from URL or Content-Disposition
+        try {
+            const response = await fetch(job.audio_url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch audio URL: ${response.status} ${response.statusText}`);
+            }
+            blob = await response.blob();
+
+            // Attempt to get filename from Content-Disposition header
+            const disposition = response.headers.get('content-disposition');
+            let filenameMatch = disposition?.match(/filename="?(.+?)"?(;|$)/i);
+            fetchedFileName = filenameMatch ? filenameMatch[1] : path.basename(new URL(job.audio_url).pathname); // Fallback to URL path
+
+            // Basic check if content type looks like audio
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.startsWith('audio/')) {
+                 console.warn(`Content-Type from URL (${contentType}) doesn't look like audio. Proceeding anyway.`);
+            }
+
+        } catch (fetchError) {
+             console.error(`Failed to download audio from ${job.audio_url} for job ${job.id}:`, fetchError);
+             throw new Error(`Failed to download audio file from URL: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`);
+        }
+        console.log(`Audio downloaded successfully from URL, size: ${blob.size}, derived filename: ${fetchedFileName}`);
 
         // 3. Call Gemini API
-        const transcriptionResult = await transcribeAudioWithGemini(blob, apiKey, endpoint);
+        // Pass the downloaded blob and the derived filename
+        const transcriptionResult = await transcribeAudioWithGemini(blob, fetchedFileName, apiKey);
 
         // 4. Update job status to 'completed'
         console.log(`Transcription successful for job ${job.id}. Updating status to completed.`);
@@ -196,10 +325,10 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const geminiApiKey = Deno.env.get('GOOGLE_GEMINI_API_KEY');
-    const geminiEndpoint = Deno.env.get('GEMINI_API_ENDPOINT'); // Get endpoint from env
+    // Removed geminiModel retrieval
 
-    if (!supabaseUrl || !serviceRoleKey || !geminiApiKey || !geminiEndpoint) {
-      throw new Error('Missing required environment variables (Supabase URL/Key, Gemini Key/Endpoint)');
+    if (!supabaseUrl || !serviceRoleKey || !geminiApiKey) { // Removed check for geminiModel
+      throw new Error('Missing required environment variables (Supabase URL/Key, Gemini Key)');
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
@@ -243,7 +372,7 @@ serve(async (req: Request) => {
           continue;
       }
 
-      await processJob(supabaseAdmin, job, geminiApiKey, geminiEndpoint);
+      await processJob(supabaseAdmin, job, geminiApiKey); // Removed geminiModel argument
     }
 
     return new Response(JSON.stringify({ message: `Processed ${pendingJobs.length} job(s).` }), {

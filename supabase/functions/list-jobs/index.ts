@@ -51,7 +51,8 @@ serve(async (req: Request) => {
         completed_at,
         transcription_result,
         error_message,
-        file_path 
+        file_path,
+        audio_url
       `)
       // While RLS enforces security, explicitly filtering by user_id can sometimes be clearer
       // .eq('user_id', user.id) 
@@ -74,8 +75,10 @@ serve(async (req: Request) => {
         completed_at: job.completed_at,
         transcription: job.status === 'completed' ? job.transcription_result : null,
         error: job.status === 'failed' ? job.error_message : null,
-        // Optionally include file_path or other details if needed by the client
-        // file_path: job.file_path 
+        // Include audio_url in the response
+        audio_url: job.audio_url,
+        // Optionally include file_path if needed by the client
+        // file_path: job.file_path
     })) ?? []; // Ensure it's an empty array if jobs is null/undefined
 
     const responsePayload = {

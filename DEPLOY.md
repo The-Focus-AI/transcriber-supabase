@@ -33,19 +33,20 @@ Set the following environment variables in your Supabase project dashboard under
 *   `SUPABASE_URL`: Your project's Supabase URL (e.g., `https://<your-project-ref>.supabase.co`). Found in Project Settings > API.
 *   `SUPABASE_ANON_KEY`: Your project's anonymous key. Found in Project Settings > API. **Do NOT use the Service Role Key here.**
 *   `SUPABASE_SERVICE_ROLE_KEY`: Your project's service role key. Found in Project Settings > API. **Keep this secret!**
-*   `GOOGLE_GEMINI_API_KEY`: Your API key for the Google Gemini service.
-*   `GEMINI_API_ENDPOINT`: The full URL for the specific Gemini API endpoint you will use for transcription (e.g., `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent`). Consult the Gemini documentation for the correct endpoint.
-
+*   `GOOGLE_GEMINI_API_KEY`: Your API key for the Google Gemini service. (Used by `process-job` function)
+*   ~~`GEMINI_API_ENDPOINT`~~: (No longer used by `process-job` as it uses the `@google/genai` library which handles endpoints).
+*   ~~`GEMINI_TRANSCRIPTION_MODEL`~~: (No longer used, the model `gemini-2.5-pro-preview-03-25` is hardcoded in `process-job`).
 ## 3. Supabase Configuration
 
 Configure the necessary Supabase services via the dashboard:
 
-1.  **Storage:**
+1.  **Storage (Optional but Recommended):**
+    *   While the primary workflow now uses URLs, having a storage bucket can be useful for other purposes or future features. If you create one:
     *   Go to **Storage**.
     *   Click **Create bucket**.
-    *   Name the bucket exactly `audio-files`.
-    *   Make it a **Private** bucket (access will be controlled by service role key in functions).
-    *   Configure appropriate file size limits if desired.
+    *   A common name is `audio-files`.
+    *   Make it **Private** if access should be controlled via service role keys.
+    *   **File Size Limit Note:** Remember Supabase Storage has a fixed file size limit per object based on your plan (often 50MB). This limit cannot be changed in bucket settings. If you intend to use Supabase Storage directly for uploads (outside the URL-based flow), ensure files fit within this limit.
 2.  **Authentication:**
     *   Go to **Authentication > Providers**.
     *   Ensure the **Email** provider is enabled. Configure settings as needed (e.g., disable email confirmations if desired for simplicity, though not recommended for production).
@@ -86,7 +87,7 @@ Use the provided deployment script:
     # Run from project root directory
     ./deploy_functions.sh
     ```
-    This deploys `transcribe`, `get-job-status`, `list-jobs`, `process-job`, and `retry-failed-jobs`.
+    This deploys `transcribe`, `get-job-status`, `list-jobs`, `process-job`, and `retry-failed-jobs`. Ensure `transcribe` and `process-job` are redeployed after recent changes to the URL-based workflow.
 
 ## 5. Schedule Background Functions
 
@@ -102,12 +103,17 @@ SELECT 1 FROM pg_extension WHERE extname = 'pg_cron';
 ```
 
 *   If this query returns a row, `pg_cron` is already enabled, and you can proceed to step 5.2.
-*   If this query returns no rows, enable the extension by running the following command in the SQL Editor:
+*   If this query returns no rows, enable the `pg_cron` extension by running the following command in the SQL Editor:
     ```sql
     -- Enable pg_cron extension
-    CREATE EXTENSION pg_cron;
+    CREATE EXTENSION IF NOT EXISTS pg_cron;
     ```
-    Verify it was enabled by running the `SELECT` query again.
+*   **Enable `pg_net` Extension:** The cron jobs use `net.http_post` to trigger Edge Functions. Enable the required `pg_net` extension as well:
+    ```sql
+    -- Enable pg_net extension
+    CREATE EXTENSION IF NOT EXISTS pg_net;
+    ```
+    Verify both extensions are enabled by running `SELECT extname FROM pg_extension WHERE extname IN ('pg_cron', 'pg_net');` - it should return two rows.
 
 **5.2. Create Cron Jobs**
 
@@ -184,14 +190,20 @@ SELECT cron.schedule(
 -- SELECT * FROM cron.job;
 ```
 *(Note: Using `cron.schedule` ensures the job is created or updated if it already exists with the same name.)*
-## 6. Implement Gemini API Call
+## 6. Verify Gemini API Implementation
 
-The core transcription logic needs to be implemented:
+The core transcription logic has been implemented in `supabase/functions/process-job/index.ts`.
 
-1.  Open `supabase/functions/process-job/index.ts`.
-2.  Locate the `transcribeAudioWithGemini` function.
-3.  **Replace the placeholder implementation** with the actual code to call the Google Gemini API using the `audioBlob`, `apiKey`, and `endpoint`. Refer to the official Google Gemini API documentation for the correct request format, headers, and response parsing. You might need to handle different audio formats or convert the blob (e.g., to Base64) depending on the API requirements.
-4.  After implementing the Gemini call, **redeploy the function**:
+1.  **Review the Implementation:**
+    *   Open `supabase/functions/process-job/index.ts`.
+    *   Locate the `transcribeAudioWithGemini` function.
+    *   This function now uses the `@google/genai` library. It performs the following steps:
+        *   Uploads the audio file (downloaded from Supabase Storage) to the Google File API.
+        *   Calls the hardcoded Gemini model (`gemini-2.5-pro-preview-03-25`) using the uploaded file's URI.
+        *   Includes a prompt requesting transcription in a specific JSON format (defined by `TRANSCRIPTION_OUTPUT_SCHEMA` in the file).
+        *   Parses the JSON response from Gemini.
+2.  **Ensure API Key is Set:** Double-check that the `GOOGLE_GEMINI_API_KEY` environment variable is correctly set in your Supabase project settings (Step 2).
+3.  **Deploy/Redeploy:** If you haven't deployed the function after cloning or if you make any further modifications, deploy it:
     ```bash
     # Run from project root directory
     supabase functions deploy process-job --no-verify-jwt

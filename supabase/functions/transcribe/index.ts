@@ -44,42 +44,34 @@ serve(async (req: Request) => {
     }
     console.log('User authenticated:', user.id);
 
-    // 3. Parse Multipart Form Data
-    const formData = await req.formData();
-    const file = formData.get('audio') as File; // Assuming the file input name is 'audio'
-
-    if (!file) {
-      throw new Error('No audio file provided in the form data under the key "audio".');
+    // 3. Parse JSON Body for audio_url
+    if (req.headers.get("content-type") !== "application/json") {
+      throw new Error("Request body must be JSON");
     }
-    console.log(`Received file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+    const body = await req.json();
+    const audioUrl = body.audio_url;
 
-    // Basic file type validation (adjust as needed based on Gemini requirements)
-    // if (!file.type.startsWith('audio/')) {
-    //   throw new Error('Invalid file type. Only audio files are accepted.');
-    // }
-
-    // 4. Upload File to Supabase Storage
-    const timestamp = Date.now();
-    const filePath = `${user.id}/${timestamp}-${file.name}`; // User-specific folder
-    const bucketName = 'audio-files'; // Make sure this bucket exists in your Supabase project
-
-    console.log(`Uploading to bucket: ${bucketName}, path: ${filePath}`);
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from(bucketName)
-      .upload(filePath, file);
-
-    if (uploadError) {
-      console.error('Storage upload error:', uploadError);
-      throw new Error(`Failed to upload file: ${uploadError.message}`);
+    if (!audioUrl || typeof audioUrl !== 'string') {
+      throw new Error('Missing or invalid "audio_url" in JSON request body.');
     }
-    console.log('File uploaded successfully:', uploadData?.path);
+
+    // Basic URL validation (can be made more robust)
+    try {
+      new URL(audioUrl); // Check if it's a valid URL structure
+    } catch (_) {
+      throw new Error(`Invalid URL format provided: ${audioUrl}`);
+    }
+    console.log(`Received audio URL: ${audioUrl}`);
+
+    // 4. File Upload to Supabase Storage is REMOVED
 
     // 5. Create Job Record in Database
     const { data: jobData, error: jobError } = await supabaseAdmin
       .from('jobs')
       .insert({
         user_id: user.id,
-        file_path: uploadData.path, // Use the path returned by storage
+        audio_url: audioUrl, // Store the provided URL
+        file_path: null, // Set file_path to null as we are using URL
         status: 'pending', // Initial status
       })
       .select('id, status, created_at') // Select the fields needed for the response
@@ -87,9 +79,7 @@ serve(async (req: Request) => {
 
     if (jobError) {
       console.error('Database insert error:', jobError);
-      // Attempt to delete the uploaded file if DB insert fails
-      await supabaseAdmin.storage.from(bucketName).remove([filePath]);
-      console.warn(`Rolled back storage upload for path: ${filePath}`);
+      // No storage upload to roll back
       throw new Error(`Failed to create job record: ${jobError.message}`);
     }
 

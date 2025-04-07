@@ -61,7 +61,7 @@ serve(async (req: Request) => {
     // 4. Upload File to Supabase Storage
     const timestamp = Date.now();
     const filePath = `${user.id}/${timestamp}-${file.name}`; // User-specific folder
-    const bucketName = 'audio_files'; // Make sure this bucket exists in your Supabase project
+    const bucketName = 'audio-files'; // Make sure this bucket exists in your Supabase project
 
     console.log(`Uploading to bucket: ${bucketName}, path: ${filePath}`);
     const { data: uploadData, error: uploadError } = await supabaseAdmin.storage

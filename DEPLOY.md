@@ -43,7 +43,7 @@ Configure the necessary Supabase services via the dashboard:
 1.  **Storage:**
     *   Go to **Storage**.
     *   Click **Create bucket**.
-    *   Name the bucket exactly `audio_files`.
+    *   Name the bucket exactly `audio-files`.
     *   Make it a **Private** bucket (access will be controlled by service role key in functions).
     *   Configure appropriate file size limits if desired.
 2.  **Authentication:**
@@ -90,7 +90,30 @@ Use the provided deployment script:
 
 ## 5. Schedule Background Functions
 
-Use `pg_cron` to schedule the `process-job` and `retry-failed-jobs` functions.
+This project uses `pg_cron` to schedule the `process-job` and `retry-failed-jobs` functions.
+
+**5.1. Enable pg_cron Extension (if necessary)**
+
+First, check if the `pg_cron` extension is enabled. Run the following query in the **Database > SQL Editor** in your Supabase dashboard:
+
+```sql
+-- Check if pg_cron is enabled
+SELECT 1 FROM pg_extension WHERE extname = 'pg_cron';
+```
+
+*   If this query returns a row, `pg_cron` is already enabled, and you can proceed to step 5.2.
+*   If this query returns no rows, enable the extension by running the following command in the SQL Editor:
+    ```sql
+    -- Enable pg_cron extension
+    CREATE EXTENSION pg_cron;
+    ```
+    Verify it was enabled by running the `SELECT` query again.
+
+**5.2. Create Cron Jobs**
+
+You can create the necessary cron jobs using either the Supabase Dashboard UI or by running SQL commands directly.
+
+**Method A: Using the Supabase Dashboard (Recommended)**
 
 1.  Go to **Database > Cron Jobs** in your Supabase dashboard.
 2.  Click **New cron job**.
@@ -99,6 +122,7 @@ Use `pg_cron` to schedule the `process-job` and `retry-failed-jobs` functions.
     *   **Schedule:** `* * * * *` (Runs every minute. Adjust frequency as needed.)
     *   **Function:** Choose **SQL** and paste the following, replacing placeholders:
         ```sql
+        -- Trigger the process-job function
         SELECT net.http_post(
             url:='<YOUR_SUPABASE_PROJECT_URL>/functions/v1/process-job',
             headers:='{"Authorization": "Bearer <YOUR_SUPABASE_SERVICE_ROLE_KEY>"}'::jsonb
@@ -107,19 +131,59 @@ Use `pg_cron` to schedule the `process-job` and `retry-failed-jobs` functions.
         *(Replace `<YOUR_SUPABASE_PROJECT_URL>` with your actual project URL, e.g., `https://<ref>.supabase.co`)*
         *(Replace `<YOUR_SUPABASE_SERVICE_ROLE_KEY>` with your actual service role key)*
         *(Optional: Add a custom header like `{"X-Trigger-Secret": "your-secret"}` and check for it in the function for added security)*
-4.  Click **New cron job** again.
-5.  **Schedule `retry-failed-jobs`:**
+4.  Click **Save**.
+5.  Click **New cron job** again.
+6.  **Schedule `retry-failed-jobs`:**
     *   **Name:** `Retry Failed Jobs`
-    *   **Schedule:** `* * * * *` (Runs every minute. Adjust frequency as needed.)
+    *   **Schedule:** `*/5 * * * *` (Runs every 5 minutes. Adjust frequency as needed.)
     *   **Function:** Choose **SQL** and paste the following, replacing placeholders:
         ```sql
+        -- Trigger the retry-failed-jobs function
         SELECT net.http_post(
             url:='<YOUR_SUPABASE_PROJECT_URL>/functions/v1/retry-failed-jobs',
             headers:='{"Authorization": "Bearer <YOUR_SUPABASE_SERVICE_ROLE_KEY>"}'::jsonb
         );
         ```
         *(Replace placeholders as above)*
+7.  Click **Save**.
 
+**Method B: Using SQL Commands**
+
+Alternatively, run the following SQL commands in the **Database > SQL Editor**. Remember to replace the placeholders.
+
+```sql
+-- IMPORTANT: Replace placeholders before running!
+-- <YOUR_SUPABASE_PROJECT_URL> e.g., https://<ref>.supabase.co
+-- <YOUR_SUPABASE_SERVICE_ROLE_KEY> Your actual service role key
+
+-- Schedule process-job (every minute)
+SELECT cron.schedule(
+    'process-pending-jobs',
+    '* * * * *',
+    $$
+    SELECT net.http_post(
+        url:='<YOUR_SUPABASE_PROJECT_URL>/functions/v1/process-job',
+        headers:='{"Authorization": "Bearer <YOUR_SUPABASE_SERVICE_ROLE_KEY>"}'::jsonb
+    );
+    $$
+);
+
+-- Schedule retry-failed-jobs (every 5 minutes)
+SELECT cron.schedule(
+    'retry-failed-jobs',
+    '*/5 * * * *',
+    $$
+    SELECT net.http_post(
+        url:='<YOUR_SUPABASE_PROJECT_URL>/functions/v1/retry-failed-jobs',
+        headers:='{"Authorization": "Bearer <YOUR_SUPABASE_SERVICE_ROLE_KEY>"}'::jsonb
+    );
+    $$
+);
+
+-- Optional: Verify jobs were created
+-- SELECT * FROM cron.job;
+```
+*(Note: Using `cron.schedule` ensures the job is created or updated if it already exists with the same name.)*
 ## 6. Implement Gemini API Call
 
 The core transcription logic needs to be implemented:

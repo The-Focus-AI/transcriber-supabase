@@ -68,7 +68,7 @@ async function transcribeAudioWithGemini(audioBlob: Blob, apiKey: string, endpoi
 
 async function processJob(supabaseAdmin: any, job: any, apiKey: string, endpoint: string) {
     console.log(`Processing job ID: ${job.id}, file: ${job.file_path}`);
-    const bucketName = 'audio_files'; // Ensure this matches the upload bucket
+    const bucketName = 'audio-files'; // Ensure this matches the upload bucket
 
     try {
         // 1. Update job status to 'processing' and set started_at

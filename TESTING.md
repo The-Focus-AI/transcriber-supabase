@@ -7,7 +7,7 @@ This guide outlines how to perform an end-to-end manual test of the transcriptio
 Before testing, ensure you have completed **all** steps in `DEPLOY.md`, including:
 1.  Database migration (`supabase db push`).
 2.  Setting all required Environment Variables in Supabase Settings > Edge Functions.
-3.  Configuring Supabase Storage (bucket `audio_files`), Authentication (Email provider enabled), and RLS policies.
+3.  Configuring Supabase Storage (bucket `audio-files`), Authentication (Email provider enabled), and RLS policies.
 4.  Deploying all Edge Functions (`./deploy_functions.sh`).
 5.  Scheduling the `process-job` and `retry-failed-jobs` functions via pg_cron.
 6.  **Crucially:** Implementing the actual `transcribeAudioWithGemini` function logic in `supabase/functions/process-job/index.ts` and redeploying that function.

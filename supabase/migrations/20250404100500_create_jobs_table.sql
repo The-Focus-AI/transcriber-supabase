@@ -1,6 +1,15 @@
 -- Enable UUID generation extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Create the supabase_functions_user role if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_functions_user') THEN
+    CREATE ROLE supabase_functions_user;
+  END IF;
+END
+$$;
+
 -- Create the jobs table
 CREATE TABLE jobs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

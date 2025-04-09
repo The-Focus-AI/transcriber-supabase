@@ -370,6 +370,32 @@ async function handleGetTranscript(args: any) {
     }
 }
 
+async function handleTestEcho(args: any) {
+    const message = args.message ?? args._[1] ?? "Hello, Echo!";
+
+    const jwt = await readJwt();
+    if (!jwt) {
+        console.error("Error: Not logged in. Please run 'login' first to get a JWT.");
+        Deno.exit(1);
+    }
+
+    const requestBody = {
+        jobId: "test-job-id",
+        payload: {
+            data: message
+        }
+    };
+
+    try {
+        const result = await makeApiRequest('/functions/v1/execute-echo', 'POST', jwt, requestBody);
+        console.log("\n--- Echo Test Result ---");
+        console.log(JSON.stringify(result, null, 2));
+        console.log("-------------------------\n");
+    } catch (err) {
+        // Error already logged in makeApiRequest
+        Deno.exit(1);
+    }
+}
 
 function printUsage() {
     console.log(`
@@ -381,6 +407,7 @@ Commands:
   list-jobs [--json]                List jobs (default: table view). Use --json for full JSON output.
   submit-job <audio_url>            Submit a new transcription job with a public audio URL.
   get-status <job_id>               Check the status of a specific job.
+  test-echo [message]               Test the Echo function with an optional message.
   help                              Show this help message.
 
 Environment Variables:
@@ -424,6 +451,9 @@ async function main() {
             break;
         case 'get-status':
             await handleGetStatus(args);
+            break;
+        case 'test-echo':
+            await handleTestEcho(args);
             break;
         case 'help':
         default:

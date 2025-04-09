@@ -2,11 +2,11 @@
 
 ## Overview
 
-Completed the *implementation* for Iteration 6 (Step Execution Logic). The `workflow-orchestrator` function now identifies running jobs, finds the appropriate transformer and target function based on the current step, and invokes the target function. It also retains the logic to start pending jobs.
+Completed the *implementation* for Iteration 7 (Simple "Echo" Transformer & Executor). The `execute-echo` function was successfully tested and verified.
 
 **Testing Status:** The unit tests (`index.test.ts`) for the orchestrator were updated but encountered persistent type errors related to the mocking strategy (`deno/std/testing/mock@0.177.0`). These tests need manual review and correction.
 
-Ready to start Iteration 7: Simple "Echo" Transformer & Executor.
+Ready to start Iteration 8: Data Flow Implementation.
 
 ## Current Task
 

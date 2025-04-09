@@ -34,8 +34,7 @@ Set the following environment variables in your Supabase project dashboard under
 *   `SUPABASE_ANON_KEY`: Your project's anonymous key. Found in Project Settings > API. **Do NOT use the Service Role Key here.**
 *   `SUPABASE_SERVICE_ROLE_KEY`: Your project's service role key. Found in Project Settings > API. **Keep this secret!**
 *   `GOOGLE_GEMINI_API_KEY`: Your API key for the Google Gemini service. (Used by `process-job` function)
-*   ~~`GEMINI_API_ENDPOINT`~~: (No longer used by `process-job` as it uses the `@google/genai` library which handles endpoints).
-*   ~~`GEMINI_TRANSCRIPTION_MODEL`~~: (No longer used, the model `gemini-2.5-pro-preview-03-25` is hardcoded in `process-job`).
+
 ## 3. Supabase Configuration
 
 Configure the necessary Supabase services via the dashboard:

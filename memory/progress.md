@@ -2,7 +2,7 @@
 
 Based on `memory/project-plan.md`
 
-## Overall Progress: 0% # Placeholder, will update based on iterations later
+## Overall Progress: 58% # Updated based on completed iterations
 
 ## Iteration Breakdown:
 
@@ -11,7 +11,7 @@ Based on `memory/project-plan.md`
 *   [X] **Iteration 3: Get/List Job APIs & RLS**
 *   [X] **Iteration 4: Define Workflow Structure & Transformer Table**
 *   [X] **Iteration 5: Basic Orchestrator Logic (Pickup Pending)**
-*   [?] **Iteration 6: Step Execution Logic (Orchestrator)**
+*   [X] **Iteration 6: Step Execution Logic (Orchestrator)**
 *   [X] **Iteration 7: Simple "Echo" Transformer & Executor**
 *   [ ] **Iteration 8: Data Flow Implementation**
 *   [ ] **Iteration 9: Basic Error Handling & Retry Fields**

@@ -21,3 +21,5 @@ Wrap the command intended for `psql` within `bash -c '...'`. This ensures that t
 dotenvx run -- bash -c 'psql $DATABASE_URL -c "\\d table_name"' | cat
 ```
 Note the single quotes around the `bash` command string and escaped double quotes/backslashes within the `psql` command itself. 
+
+- **Insights:** Testing in production can provide valuable insights but requires careful monitoring and a rollback plan. 

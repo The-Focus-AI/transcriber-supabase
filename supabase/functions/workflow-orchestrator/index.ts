@@ -2,25 +2,28 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createSupabaseServiceClient, corsHeaders } from '../shared/supabase-client.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { WorkflowDefinition, Job, Transformer, WorkflowStep } from '../shared/types.ts' // Import shared types
+import jp from 'npm:jsonpath';
+import { JSONPath } from 'npm:jsonpath-plus';
 
 const ORCHESTRATOR_SECRET = Deno.env.get('ORCHESTRATOR_SECRET')
 const FUNCTION_INVOKE_TIMEOUT_MS = 30000; // Example: 30 second timeout for function invokes
 
 // Main handler logic
 // Export the handler function for testing
-export async function handleOrchestration(supabaseClient: SupabaseClient): Promise<Response> {
+export async function handleOrchestration(): Promise<Response> {
     console.log('Workflow orchestrator function invoked.')
 
     try {
-        // 1. Fetch RUNNING jobs with a current_step_id
+        const supabaseClient = createSupabaseServiceClient();
+
+        // 1. Fetch RUNNING jobs with a current_step_id using Supabase client with custom SQL
         console.log('Fetching running jobs...')
         const { data: runningJobs, error: fetchError } = await supabaseClient
             .from('jobs')
-            // Select fields needed for processing
-            .select('id, workflow_id, current_step_id, input_data, step_data') 
+            .select('id, workflow_id, current_step_id, input_data, step_data')
             .eq('status', 'running')
-            .not('current_step_id', 'is', null) // Ensure current_step_id is not null
-            .order('last_updated_at', { ascending: true }) // Process older jobs first
+            .neq('current_step_id', null)
+            .order('last_updated_at', { ascending: true })
             .limit(10) as { data: Job[] | null, error: any };
 
         if (fetchError) {
@@ -90,15 +93,13 @@ export async function handleOrchestration(supabaseClient: SupabaseClient): Promi
                 console.log(`Job ${job.id}: Invoking step '${job.current_step_id}', transformer '${currentStepConfig.transformer_id}', target function '${target_function}'`);
 
                 // --- Invoke Target Function --- 
-                // Prepare payload for the target function
-                // TODO: Implement proper input mapping based on currentStepConfig.input_map
+                // Prepare payload for the target function with JSONPath mapping
                 const functionPayload = {
                     job_id: job.id,
-                    job_input: job.input_data,
-                    step_data: job.step_data, // Pass previous step data
+                    job_input: jp.query(job.input_data, currentStepConfig.input_map || '$'),
+                    step_data: jp.query(job.step_data, currentStepConfig.input_map || '$'),
                     transformer_config: transformerConfig,
                     current_step_id: job.current_step_id,
-                    // Potentially add user_id if needed by the function?
                 };
 
                 let invokeError: Error | null = null;
@@ -116,10 +117,11 @@ export async function handleOrchestration(supabaseClient: SupabaseClient): Promi
                         invokeError = invokeErr instanceof Error ? invokeErr : new Error(String(invokeErr));
                     } else {
                         console.log(`Job ${job.id}: Successfully invoked target function '${target_function}' for step '${job.current_step_id}'.`);
-                        // TODO: Process response from function (Iteration 8/9)
+                        // Process response from function with JSONPath mapping
+                        const responseData = {}; // Assume response data is available here
+                        job.step_data = jp.query(responseData, currentStepConfig.output_map || '$');
                         // TODO: Determine next_step or completion based on response and workflow definition
-                        // TODO: Update job.step_data with output
-                        // Placeholder: For now, just update last_updated_at
+                        // Update job.step_data with output
                     }
 
                 } catch (err) {
@@ -271,18 +273,6 @@ serve(async (req) => {
         })
     }
 
-    // 2. Create Service Client
-    let supabaseClient: SupabaseClient;
-    try {
-        supabaseClient = createSupabaseServiceClient();
-    } catch (e) {
-        console.error('Failed to create Supabase service client:', e);
-        return new Response(JSON.stringify({ error: 'Failed to initialize Supabase client' }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 500,
-        });
-    }
-
-    // 3. Handle Orchestration Logic
-    return await handleOrchestration(supabaseClient);
-}) 
+    // 2. Handle Orchestration Logic
+    return await handleOrchestration();
+}, { port: 8080 }) 

@@ -18,10 +18,9 @@ export interface WorkflowDefinition {
  */
 export interface WorkflowStep {
   transformer_id: string; // ID of the transformer to execute for this step
-  input_map?: { // Optional: How to map inputs to the transformer
-    [transformerInputKey: string]: string; // e.g., { "data": "$.job_input.payload" } or { "fileUrl": "$.previous_step.output.url" }
-  };
-  next_step: string | null; // ID of the next step, or null if this is the last step
+  input_map?: string; // JSONPath for input mapping
+  output_map?: string; // JSONPath for output mapping
+  next_step?: string;
   // Potentially add step-specific retry config or other metadata later
 }
 

@@ -18,12 +18,12 @@ interface MockResults {
 const createMockSupabaseClientV3 = (results: MockResults = {}) => {
 
     const spies = {
-        fetchRunningJobs: mc.spy(),
-        fetchPendingJobs: mc.spy(),
-        fetchWorkflow: mc.spy(),
-        fetchTransformer: mc.spy(),
-        updateJob: mc.spy(),
-        invokeFunction: mc.spy(),
+        fetchRunningJobs: mc.spy(() => Promise.resolve(results.fetchRunningJobs || { data: null, error: null })),
+        fetchPendingJobs: mc.spy(() => Promise.resolve(results.fetchPendingJobs || { data: null, error: null })),
+        fetchWorkflow: mc.spy((id: string) => Promise.resolve(results.fetchWorkflow?.[id] || { data: null, error: null })),
+        fetchTransformer: mc.spy((id: string) => Promise.resolve(results.fetchTransformer?.[id] || { data: null, error: null })),
+        updateJob: mc.spy((id: string, updates: Partial<Job>) => Promise.resolve(results.updateJob?.[id] || { error: null })),
+        invokeFunction: mc.spy((name: string, options: any) => Promise.resolve(results.invokeFunction?.[name] || { data: null, error: null })),
     };
 
     // --- Mock Client Structure --- 
@@ -33,32 +33,18 @@ const createMockSupabaseClientV3 = (results: MockResults = {}) => {
             if (tableName === 'jobs') {
                 return {
                     select: mc.spy((_select: string) => ({
-                        eq: mc.spy((col: string, _val: any) => ({
-                            // --- status=running ---
-                            not: mc.spy((_colNot: string, _op: string, _val: any) => ({
-                                order: mc.spy((_orderCol: string, _opts: any) => ({
-                                    limit: mc.spy((_limit: number) => {
-                                        spies.fetchRunningJobs(); // Record call
-                                        return Promise.resolve(results.fetchRunningJobs || { data: [], error: null });
-                                    })
-                                }))
+                        eq: mc.spy((_col: string, _val: string) => ({
+                            order: mc.spy((_col: string, _opts: any) => ({
+                                limit: mc.spy((_num: number) => ({
+                                    maybeSingle: mc.spy(() => spies.fetchPendingJobs()),
+                                })),
                             })),
-                            // --- status=pending ---
-                            order: mc.spy((_orderCol: string, _opts: any) => ({
-                                limit: mc.spy((_limit: number) => {
-                                    spies.fetchPendingJobs(); // Record call
-                                    return Promise.resolve(results.fetchPendingJobs || { data: [], error: null });
-                                })
-                             }))
-                        }))
+                        })),
                     })),
                     update: mc.spy((updates: Partial<Job>) => ({
                         eq: mc.spy((idCol: string, idVal: string) => {
-                            // --- FINAL CALL: Update Job ---
-                           spies.updateJob(idVal, updates); // Record call
-                           const result = results.updateJob?.[idVal] || { error: null };
-                           // This simplified mock doesn't handle the second .eq() for pending job updates explicitly,
-                           // but the spy records the call, and we return the predefined result.
+                            spies.updateJob(idVal, updates); // Record call
+                            const result = results.updateJob?.[idVal] || { error: null };
                             return Promise.resolve(result);
                         })
                      }))
@@ -97,16 +83,12 @@ const createMockSupabaseClientV3 = (results: MockResults = {}) => {
         }),
         // FUNCTIONS API MOCK
         functions: {
-            invoke: mc.spy((functionName: string, opts?: { body?: any }) => { // Make opts optional
-                spies.invokeFunction(functionName, opts?.body); // Record call
-                const result = results.invokeFunction?.[functionName] || { data: { message: 'Default mock success' }, error: null };
-                return Promise.resolve(result);
-            })
+            invoke: spies.invokeFunction
         },
         _spies: spies // Expose spies
-    } as unknown as SupabaseClient & { functions: { invoke: mc.Spy }, _spies: typeof spies };
+    } as unknown as SupabaseClient;
 
-    return mockClient;
+    return mockClient as unknown as SupabaseClient & { _spies: typeof spies };
 };
 
 
@@ -126,13 +108,13 @@ Deno.test('[Iteration 6] Orchestrator: No running jobs, starts one pending job',
         fetchRunningJobs: { data: [], error: null }, // No running jobs
         fetchPendingJobs: { data: [pendingJob], error: null },
         fetchWorkflow: { 
-            [workflowId]: { data: { definition: { start_step: startStep, steps: { [startStep]: { transformer_id: 't1', next_step: null } } } }, error: null }
+            [workflowId]: { data: { definition: { start_step: startStep, steps: { [startStep]: { transformer_id: 't1', next_step: undefined } } } }, error: null }
         },
         updateJob: { [pendingJob.id]: { error: null } } // Expect update for pending job
     };
     const mockClient = createMockSupabaseClientV3(mockResults);
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 200);
     const body = await response.json();
     assertExists(body.message.includes('No running jobs found'));
@@ -174,7 +156,7 @@ Deno.test('[Iteration 6] Orchestrator: Processes one running job step successful
         fetchWorkflow: {
              [workflowId]: { data: { definition: { 
                 start_step: currentStep, 
-                steps: { [currentStep]: { transformer_id: transformerId, next_step: null } } 
+                steps: { [currentStep]: { transformer_id: transformerId, next_step: undefined } } 
             } }, error: null }
         },
         fetchTransformer: {
@@ -185,7 +167,7 @@ Deno.test('[Iteration 6] Orchestrator: Processes one running job step successful
     };
     const mockClient = createMockSupabaseClientV3(mockResults);
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 200);
     const body = await response.json();
     assertEquals(body.processedCount, 1);
@@ -236,7 +218,7 @@ Deno.test('[Iteration 6] Orchestrator: Fails step if workflow definition missing
     };
     const mockClient = createMockSupabaseClientV3(mockResults);
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 200);
     const body = await response.json();
     assertEquals(body.processedCount, 1);
@@ -263,7 +245,7 @@ Deno.test('[Iteration 6] Orchestrator: Fails step if step config missing', async
         fetchRunningJobs: { data: [runningJob], error: null },
         fetchWorkflow: {
              // Ensure the WorkflowDefinition includes 'steps'
-             [workflowId]: { data: { definition: { start_step: 'stepA', steps: { 'stepA': { transformer_id: 't1', next_step: null } } } }, error: null }
+             [workflowId]: { data: { definition: { start_step: 'stepA', steps: { 'stepA': { transformer_id: 't1', next_step: undefined } } } }, error: null }
         },
         fetchPendingJobs: { data: [], error: null },
         // Ensure updateJob mock result structure is correct
@@ -271,7 +253,7 @@ Deno.test('[Iteration 6] Orchestrator: Fails step if step config missing', async
      };
     const mockClient = createMockSupabaseClientV3(mockResults);
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 200);
     const body = await response.json();
     assertEquals(body.processedCount, 1);
@@ -299,7 +281,7 @@ Deno.test('[Iteration 6] Orchestrator: Fails step if transformer missing', async
          fetchRunningJobs: { data: [runningJob], error: null },
         fetchWorkflow: {
              // Ensure the WorkflowDefinition includes 'steps'
-             [workflowId]: { data: { definition: { start_step: currentStep, steps: { [currentStep]: { transformer_id: transformerId, next_step: null } } } }, error: null }
+             [workflowId]: { data: { definition: { start_step: currentStep, steps: { [currentStep]: { transformer_id: transformerId, next_step: undefined } } } }, error: null }
         },
         fetchTransformer: { // Transformer 'transformer-missing' is correctly missing here
              'transformer-exists': { data: { target_function: 'fn', config: {} }, error: null }
@@ -310,7 +292,7 @@ Deno.test('[Iteration 6] Orchestrator: Fails step if transformer missing', async
     };
     const mockClient = createMockSupabaseClientV3(mockResults);
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 200);
     const body = await response.json();
     assertEquals(body.processedCount, 1);
@@ -339,7 +321,7 @@ Deno.test('[Iteration 6] Orchestrator: Handles function invocation error', async
         fetchRunningJobs: { data: [runningJob], error: null },
         fetchWorkflow: {
              // Ensure the WorkflowDefinition includes 'steps'
-             [workflowId]: { data: { definition: { start_step: currentStep, steps: { [currentStep]: { transformer_id: transformerId, next_step: null } } } }, error: null }
+             [workflowId]: { data: { definition: { start_step: currentStep, steps: { [currentStep]: { transformer_id: transformerId, next_step: undefined } } } }, error: null }
         },
         fetchTransformer: {
              [transformerId]: { data: { target_function: targetFunction, config: {} }, error: null }
@@ -353,7 +335,7 @@ Deno.test('[Iteration 6] Orchestrator: Handles function invocation error', async
     };
     const mockClient = createMockSupabaseClientV3(mockResults);
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 200);
     const body = await response.json();
     assertEquals(body.processedCount, 1);
@@ -364,19 +346,99 @@ Deno.test('[Iteration 6] Orchestrator: Handles function invocation error', async
     assertEquals(mockClient._spies.updateJob.calls.length, 1); // last_updated_at should still be updated
 });
 
+Deno.test('Orchestrator: Correctly maps input data using JSONPath', async () => {
+    const jobId = 'job-jsonpath-input';
+    const workflowId = 'wf-jsonpath';
+    const currentStep = 'step-jsonpath';
+    const transformerId = 'transformer-jsonpath';
+    const targetFunction = 'execute-transformer-jsonpath';
+    const runningJob: Job = {
+        id: jobId, workflow_id: workflowId, user_id: 'user-jsonpath', status: 'running',
+        current_step_id: currentStep, input_data: { key: 'value' }, step_data: {},
+        final_result: null, created_at: '2023-01-01T10:00:00Z', started_at: '2023-01-01T10:05:00Z',
+        last_updated_at: '2023-01-01T10:05:00Z',
+    } as Job;
+
+    const mockResults: MockResults = {
+        fetchRunningJobs: { data: [runningJob], error: null },
+        fetchWorkflow: {
+            [workflowId]: { data: { definition: { 
+                start_step: currentStep, 
+                steps: { [currentStep]: { transformer_id: transformerId, input_map: '$.key', output_map: '$', next_step: undefined } } 
+            } }, error: null }
+        },
+        fetchTransformer: {
+            [transformerId]: { data: { target_function: targetFunction, config: {} }, error: null }
+        },
+        invokeFunction: { [targetFunction]: { data: { transformed: 'value' }, error: null } }
+    };
+    const mockClient = createMockSupabaseClientV3(mockResults);
+
+    const response = await handleOrchestration();
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.processedCount, 1);
+    assertEquals(body.errorCount, 0);
+    assertEquals(body.results[0]?.status, 'invocation_sent');
+
+    // Verify input mapping
+    const invokeCall = mockClient._spies.invokeFunction.calls[0];
+    assertEquals(invokeCall.args[1].body.job_input, ['value']);
+});
+
+Deno.test('Orchestrator: Correctly maps output data using JSONPath', async () => {
+    const jobId = 'job-jsonpath-output';
+    const workflowId = 'wf-jsonpath';
+    const currentStep = 'step-jsonpath';
+    const transformerId = 'transformer-jsonpath';
+    const targetFunction = 'execute-transformer-jsonpath';
+    const runningJob: Job = {
+        id: jobId, workflow_id: workflowId, user_id: 'user-jsonpath', status: 'running',
+        current_step_id: currentStep, input_data: {}, step_data: {},
+        final_result: null, created_at: '2023-01-01T10:00:00Z', started_at: '2023-01-01T10:05:00Z',
+        last_updated_at: '2023-01-01T10:05:00Z',
+    } as Job;
+
+    const mockResults: MockResults = {
+        fetchRunningJobs: { data: [runningJob], error: null },
+        fetchWorkflow: {
+            [workflowId]: { data: { definition: { 
+                start_step: currentStep, 
+                steps: { [currentStep]: { transformer_id: transformerId, input_map: '$', output_map: '$.transformed', next_step: undefined } } 
+            } }, error: null }
+        },
+        fetchTransformer: {
+            [transformerId]: { data: { target_function: targetFunction, config: {} }, error: null }
+        },
+        invokeFunction: { [targetFunction]: { data: { transformed: 'output-value' }, error: null } }
+    };
+    const mockClient = createMockSupabaseClientV3(mockResults);
+
+    const response = await handleOrchestration();
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.processedCount, 1);
+    assertEquals(body.errorCount, 0);
+    assertEquals(body.results[0]?.status, 'invocation_sent');
+
+    // Verify output mapping
+    const updateCall = mockClient._spies.updateJob.calls[0];
+    assertEquals(updateCall.args[1].step_data, ['output-value']);
+});
+
 Deno.test('Orchestrator: Handles missing workflow definition', async () => {
     const jobId = 'job-456';
     const workflowId = 'wf-def';
 
     const mockClient = createMockSupabaseClientV3({
-        fetchPendingJobs: { data: [{ id: jobId, workflow_id: workflowId }], error: null },
+        fetchPendingJobs: { data: [{ id: jobId, workflow_id: workflowId, user_id: 'user-placeholder', current_step_id: null, status: 'pending', input_data: {}, step_data: {}, final_result: null, created_at: '2023-01-01T10:00:00Z', started_at: null, last_updated_at: '2023-01-01T10:05:00Z' }], error: null },
         fetchWorkflow: {
-            'another-wf': { data: { definition: { start_step: 'stepA' } }, error: null }
+            'another-wf': { data: { definition: { start_step: 'stepA', steps: {} } }, error: null }
         },
-        updateJob: { error: null } // Update shouldn't be called
+        updateJob: { [jobId]: { error: null } } // Update shouldn't be called
     });
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 200);
     const body = await response.json();
     assertEquals(body.successCount, 0);
@@ -394,14 +456,14 @@ Deno.test('Orchestrator: Handles workflow definition missing start_step', async 
     const workflowId = 'wf-ghi';
 
     const mockClient = createMockSupabaseClientV3({
-        fetchPendingJobs: { data: [{ id: jobId, workflow_id: workflowId }], error: null },
+        fetchPendingJobs: { data: [{ id: jobId, workflow_id: workflowId, user_id: 'user-placeholder', current_step_id: null, status: 'pending', input_data: {}, step_data: {}, final_result: null, created_at: '2023-01-01T10:00:00Z', started_at: null, last_updated_at: '2023-01-01T10:05:00Z' }], error: null },
         fetchWorkflow: {
-            [workflowId]: { data: { definition: { /* no start_step */ } }, error: null }
+            [workflowId]: { data: { definition: { start_step: '', steps: {} } }, error: null }
         },
-        updateJob: { error: null }
+        updateJob: { [jobId]: { error: null } }
     });
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 200);
     const body = await response.json();
     assertEquals(body.successCount, 0);
@@ -414,10 +476,10 @@ Deno.test('Orchestrator: Handles workflow definition missing start_step', async 
 
 Deno.test('Orchestrator: Handles error fetching jobs', async () => {
     const mockClient = createMockSupabaseClientV3({
-        fetchPendingJobs: { data: null, error: new Error('DB connection failed') }
+        fetchPendingJobs: { data: null, error: { error: new Error('DB connection failed') } }
     });
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 500);
     const body = await response.json();
     assertEquals(body.error, 'Database error fetching jobs');
@@ -427,19 +489,19 @@ Deno.test('Orchestrator: Handles error fetching jobs', async () => {
 });
 
 Deno.test('Orchestrator: Handles error updating job', async () => {
-     const jobId = 'job-err';
-     const workflowId = 'wf-err';
-     const startStep = 'step1-err';
+    const jobId = 'job-err';
+    const workflowId = 'wf-err';
+    const startStep = 'step1-err';
 
     const mockClient = createMockSupabaseClientV3({
-        fetchPendingJobs: { data: [{ id: jobId, workflow_id: workflowId }], error: null },
+        fetchPendingJobs: { data: [{ id: jobId, workflow_id: workflowId, user_id: 'user-placeholder', current_step_id: null, status: 'pending', input_data: {}, step_data: {}, final_result: null, created_at: '2023-01-01T10:00:00Z', started_at: null, last_updated_at: '2023-01-01T10:05:00Z' }], error: null },
         fetchWorkflow: {
-             [workflowId]: { data: { definition: { start_step: startStep } }, error: null }
+            [workflowId]: { data: { definition: { start_step: startStep, steps: {} } }, error: null }
         },
-        updateJob: { error: new Error('Update conflict') } // Simulate update error
+        updateJob: { [jobId]: { error: { error: new Error('Update conflict') } } } // Simulate update error
     });
 
-    const response = await handleOrchestration(mockClient);
+    const response = await handleOrchestration();
     assertEquals(response.status, 200); // Handler catches update error, returns 200 overall
     const body = await response.json();
     assertEquals(body.successCount, 0);
@@ -492,3 +554,85 @@ Deno.test('Orchestrator HTTP Trigger: Requires secret', async () => {
     Deno.env.get = originalEnvGet;
 });
 */ 
+
+// --- Unit Tests for JSONPath Mapping ---
+
+Deno.test('Orchestrator: Correctly maps input data using JSONPath', async () => {
+    const jobId = 'job-jsonpath-input';
+    const workflowId = 'wf-jsonpath';
+    const currentStep = 'step-jsonpath';
+    const transformerId = 'transformer-jsonpath';
+    const targetFunction = 'execute-transformer-jsonpath';
+    const runningJob: Job = {
+        id: jobId, workflow_id: workflowId, user_id: 'user-jsonpath', status: 'running',
+        current_step_id: currentStep, input_data: { key: 'value' }, step_data: {},
+        final_result: null, created_at: '2023-01-01T10:00:00Z', started_at: '2023-01-01T10:05:00Z',
+        last_updated_at: '2023-01-01T10:05:00Z',
+    } as Job;
+
+    const mockResults: MockResults = {
+        fetchRunningJobs: { data: [runningJob], error: null },
+        fetchWorkflow: {
+            [workflowId]: { data: { definition: { 
+                start_step: currentStep, 
+                steps: { [currentStep]: { transformer_id: transformerId, input_map: '$.key', output_map: '$', next_step: undefined } } 
+            } }, error: null }
+        },
+        fetchTransformer: {
+            [transformerId]: { data: { target_function: targetFunction, config: {} }, error: null }
+        },
+        invokeFunction: { [targetFunction]: { data: { transformed: 'value' }, error: null } }
+    };
+    const mockClient = createMockSupabaseClientV3(mockResults);
+
+    const response = await handleOrchestration();
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.processedCount, 1);
+    assertEquals(body.errorCount, 0);
+    assertEquals(body.results[0]?.status, 'invocation_sent');
+
+    // Verify input mapping
+    const invokeCall = mockClient._spies.invokeFunction.calls[0];
+    assertEquals(invokeCall.args[1].body.job_input, ['value']);
+});
+
+Deno.test('Orchestrator: Correctly maps output data using JSONPath', async () => {
+    const jobId = 'job-jsonpath-output';
+    const workflowId = 'wf-jsonpath';
+    const currentStep = 'step-jsonpath';
+    const transformerId = 'transformer-jsonpath';
+    const targetFunction = 'execute-transformer-jsonpath';
+    const runningJob: Job = {
+        id: jobId, workflow_id: workflowId, user_id: 'user-jsonpath', status: 'running',
+        current_step_id: currentStep, input_data: {}, step_data: {},
+        final_result: null, created_at: '2023-01-01T10:00:00Z', started_at: '2023-01-01T10:05:00Z',
+        last_updated_at: '2023-01-01T10:05:00Z',
+    } as Job;
+
+    const mockResults: MockResults = {
+        fetchRunningJobs: { data: [runningJob], error: null },
+        fetchWorkflow: {
+            [workflowId]: { data: { definition: { 
+                start_step: currentStep, 
+                steps: { [currentStep]: { transformer_id: transformerId, input_map: '$', output_map: '$.transformed', next_step: undefined } } 
+            } }, error: null }
+        },
+        fetchTransformer: {
+            [transformerId]: { data: { target_function: targetFunction, config: {} }, error: null }
+        },
+        invokeFunction: { [targetFunction]: { data: { transformed: 'output-value' }, error: null } }
+    };
+    const mockClient = createMockSupabaseClientV3(mockResults);
+
+    const response = await handleOrchestration();
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.processedCount, 1);
+    assertEquals(body.errorCount, 0);
+    assertEquals(body.results[0]?.status, 'invocation_sent');
+
+    // Verify output mapping
+    const updateCall = mockClient._spies.updateJob.calls[0];
+    assertEquals(updateCall.args[1].step_data, ['output-value']);
+}); 

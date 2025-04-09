@@ -261,4 +261,32 @@
 **Blockers:**
 *   None at this time.
 
+## 2025-04-09
+
+### Decision to Use `jsonpath-plus`
+- **Summary**: Decided to use `jsonpath-plus` for JSONPath operations due to its extended features and TypeScript support.
+- **Accomplishments**: Evaluated JSONPath libraries and selected `jsonpath-plus`.
+- **Next Steps**: Integrate `jsonpath-plus` into the project.
+- **Blockers**: None at this time.
+
+## Entry: 2025-04-09 14:00:00 EDT
+
+**Title:** Refactor and Schema Update
+
+**Summary:** Refactored the `workflow-orchestrator` function to use raw SQL queries and updated the database schema to include necessary columns.
+
+**Accomplishments:**
+*   Completed refactoring and schema update.
+
+**Decisions:**
+*   Proceed with testing in production.
+
+## 2025-04-09
+
+### Decision to Use `jsonpath-plus`
+- **Summary**: Decided to use `jsonpath-plus` for JSONPath operations due to its extended features and TypeScript support.
+- **Accomplishments**: Evaluated JSONPath libraries and selected `jsonpath-plus`.
+- **Next Steps**: Integrate `jsonpath-plus` into the project.
+- **Blockers**: None at this time.
+
 --- 

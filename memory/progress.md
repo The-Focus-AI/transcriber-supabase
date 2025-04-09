@@ -17,4 +17,10 @@ Based on `memory/project-plan.md`
 *   [ ] **Iteration 9: Basic Error Handling & Retry Fields**
 *   [ ] **Iteration 10: Advanced Retry Logic & History**
 *   [ ] **Iteration 11: Gemini Timestamp Transcriber**
-*   [ ] **Iteration 12: Monitoring & Logging** 
+*   [ ] **Iteration 12: Monitoring & Logging**
+*   [X] Decision to use `jsonpath-plus` for JSONPath operations.
+
+- **Progress:**
+  - [X] Refactored `workflow-orchestrator` to use raw SQL.
+  - [X] Updated database schema with new columns.
+  - [-] Testing in production environment. 

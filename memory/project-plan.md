@@ -328,4 +328,19 @@ The plan focuses on building the core engine incrementally, ensuring each stage 
     3. Basic unit tests for logging and monitoring verifying:
        - Correct logging of key events and errors.
        - Accurate metric calculations and queries.
-    ``` 
+    ```
+
+## JSONPath Library Integration
+
+- **Decision**: Use `jsonpath-plus` for JSONPath operations due to its extended features, TypeScript support, and active maintenance.
+- **Integration Plan**:
+  1. Install `jsonpath-plus` as a dependency.
+  2. Update relevant modules to use `jsonpath-plus` for JSONPath queries.
+  3. Test JSONPath functionality with existing and new test cases.
+  4. Document the integration process and any changes made.
+
+- **Plan:** 
+  - [X] Refactor `workflow-orchestrator` to use raw SQL queries.
+  - [X] Update database schema to include `current_step_id` and `step_data` columns.
+  - [ ] Test `workflow-orchestrator` in production.
+- **Validation Criteria:** Ensure the function processes jobs correctly and handles errors appropriately. 

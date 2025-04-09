@@ -1,7 +1,8 @@
 # Generic Workflow Engine with Supabase
 
 ## Project Overview
-A serverless workflow engine built on Supabase that accepts job requests via API, orchestrates multi-step workflows involving various tasks (like API calls, data transformations, notifications), and manages job state, data flow, and retries. Initially demonstrated with an audio transcription workflow using Google Gemini.
+- **Overview:** The project involves developing a `workflow-orchestrator` function using Supabase and Deno to manage job workflows.
+- **Current Focus:** Testing the `workflow-orchestrator` function in a production environment to ensure it processes jobs correctly.
 
 ## Core Features
 - API endpoint to trigger workflows with custom input data.

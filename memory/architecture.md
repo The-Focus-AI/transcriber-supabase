@@ -35,4 +35,7 @@
 - **Error Handling:** Standard try/catch blocks, returning appropriate HTTP status codes (e.g., 401, 404, 500).
 - **RLS:** Enforce data access policies directly in the database.
 - **Configuration:** Store transformer-specific configs in the `transformers` table.
-- **Data Flow:** Use JSONPath for mapping data between steps (planned). 
+- **Data Flow:** Use JSONPath for mapping data between steps (planned).
+- **Tech Stack:** Supabase, Deno, TypeScript.
+- **Directory Layout:** `supabase/functions/workflow-orchestrator` for orchestrator logic.
+- **Patterns:** Use of raw SQL queries for database interactions. 

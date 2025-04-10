@@ -1,12 +1,27 @@
-# Active Context
+# Active Context - Thu Apr 10 05:50:37 EDT 2025
 
-## Overview
+**Current Focus:** Workflow Orchestration - Test Suite Evaluation
 
-Completed the *implementation* for Iteration 7 (Simple "Echo" Transformer & Executor). The `execute-echo` function was successfully tested and verified.
+**Overview:**
+The `workflow-orchestrator` function's main entry point (`index.ts`) was refactored to use the extracted logic in `orchestrator.ts`. The test suite was run to assess the health of the functions after recent changes and refactoring.
 
-**Testing Status:** The unit tests (`index.test.ts`) for the orchestrator were updated but encountered persistent type errors related to the mocking strategy (`deno/std/testing/mock@0.177.0`). These tests need manual review and correction.
+**Current State:**
+- The `workflow-orchestrator/index.ts` refactor is complete.
+- Test Results:
+  - `execute-echo`: Ignored (server not running).
+  - `get-job`, `list-jobs`, `start-workflow`: Passing (with mock errors logged).
+  - `workflow-orchestrator/jobFetcher`: Passing.
+  - `workflow-orchestrator/jobProcessor`: **FAILING** (2 tests failed due to assertion errors - problem appears to be with mock workflow definition fetching).
 
-Ready to start Iteration 8: Data Flow Implementation.
+**What's Next?**
+- Fixing the `jobProcessor.test.ts` failures is currently **DEFERRED**.
+- Awaiting user direction for the next task.
+
+**Blockers:**
+- None.
+
+**Decisions:**
+- Deferred fixing `jobProcessor.test.ts` failures.
 
 ## Current Task
 

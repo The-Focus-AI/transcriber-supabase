@@ -2,7 +2,24 @@
 
 Based on `memory/project-plan.md`
 
-## Overall Progress: 58% # Updated based on completed iterations
+## Overall Project Progress
+
+- [X] Project Setup & Initial Schema (`20250408191859_initial_schema.sql`)
+- [X] Basic Job Management Functions (`start-workflow`, `get-job`, `list-jobs`)
+- [X] Core Orchestrator Logic (Initial Implementation)
+- [X] Add Job Start Time/Current Step (`20250408194224_add_job_start_step.sql`)
+- [X] Add `step_data` Column (`20250409232828_add_step_data_to_jobs.sql`)
+- [X] Simple "Echo" Transformer & Executor (`execute-echo`)
+- [X] Refactor Orchestrator Logic into Modules (`jobFetcher`, `jobProcessor`, `pendingJobProcessor`, `orchestrator`)
+- [?] Workflow Orchestrator Testing
+  - [X] `jobFetcher.test.ts`
+  - [?] `jobProcessor.test.ts` - **FAILING** (Deferred - Thu Apr 10 05:50:37 EDT 2025)
+  - [ ] `pendingJobProcessor.test.ts`
+  - [ ] `orchestrator.test.ts` (Integration of modules)
+- [ ] Data Flow Implementation (JSONPath `input_map`/`output_map`)
+- [ ] Error Handling & Retries
+- [ ] Job Completion & Final Result
+- [ ] Advanced Features (e.g., conditional branching, parallelism)
 
 ## Iteration Breakdown:
 

@@ -289,4 +289,48 @@
 - **Next Steps**: Integrate `jsonpath-plus` into the project.
 - **Blockers**: None at this time.
 
+## Thu Apr 10 05:50:37 EDT 2025
+
+**Summary:** Refactored workflow orchestrator main entry point and evaluated test status.
+
+**Accomplishments:**
+- Updated `workflow-orchestrator/index.ts` to use the `handleOrchestration` function imported from `orchestrator.ts`, simplifying the main function file.
+- Executed the full test suite.
+- Verified that tests for `get-job`, `list-jobs`, `start-workflow`, and `jobFetcher` are passing.
+- Confirmed that `execute-echo` tests are currently ignored.
+- Identified that tests for `jobProcessor` are failing due to assertion errors, likely related to mock setup for workflow definition fetching.
+
+**Decisions:**
+- Deferred fixing the failing `jobProcessor.test.ts` to focus on other tasks.
+
+---
+
+## Wed Apr 09 23:28:28 EDT 2025
+
+**Summary:** Addressed test failures related to the missing `step_data` column in the `jobs` table.
+
+**Accomplishments:**
+- Created a new database migration (`20250409232828_add_step_data_to_jobs.sql`) to add the `step_data JSONB` column to the `public.jobs` table.
+- Applied the migration to the database using `supabase db push`.
+- Re-ran the test suite (`dotenvx run -- deno test --allow-env --allow-net --allow-read --allow-write | cat`).
+- Observed that previous `TypeError` related to `step_data` was resolved.
+- New test failures emerged in `workflow-orchestrator` tests, indicating the orchestrator was not finding running or pending jobs as expected in the test setup.
+
+**Decisions:**
+- Proceeded to investigate the new test failures related to job finding.
+
+---
+
+## Wed Apr 09 19:42:24 EDT 2025
+
+**Summary:** Added job start time and current step tracking to the database schema and ran initial tests.
+
+**Accomplishments:**
+- Created and applied migration `20250408194224_add_job_start_step.sql` to add `started_at` and `current_step_id` columns to the `jobs` table.
+- Ran the test suite using `dotenvx run -- deno test ...`.
+- Identified multiple test failures in `workflow-orchestrator/index.test.ts` related to a missing `step_data` column.
+
+**Decisions:**
+- Planned to add the `step_data` column via a new migration to fix the failing tests.
+
 --- 
